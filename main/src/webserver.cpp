@@ -510,21 +510,32 @@ esp_err_t CWebServer::uri_handler_post_ws2812_blink(httpd_req_t *req)
     if (item) {
         uint32_t duration = 1000;
         uint32_t count = 1;
+        bool demo = false;
         const cJSON *item_duration = cJSON_GetObjectItemCaseSensitive(item, "duration");
         if (item_duration) {
-            duration = (uint8_t)(item_duration->valuedouble);
+            duration = (uint32_t)(item_duration->valuedouble);
         }
         const cJSON *item_count = cJSON_GetObjectItemCaseSensitive(item, "count");
         if (item_count) {
-            count = (uint8_t)(item_count->valuedouble);
+            count = (uint32_t)(item_count->valuedouble);
+        }
+        const cJSON *item_demo = cJSON_GetObjectItemCaseSensitive(item, "demo");
+        if (item_demo) {
+            demo = (bool)(item_demo->valuedouble);
         }
 
-        if (GetWS2812Ctrl()->blink(duration, count)) {
+        if (demo) {
+            GetWS2812Ctrl()->blink_demo();
             httpd_resp_set_status(req, HTTPD_200);
             httpd_resp_send(req, "OK", 3);
         } else {
-            httpd_resp_set_status(req, HTTPD_500);
-            httpd_resp_send(req, "NG", 3);
+            if (GetWS2812Ctrl()->blink(duration, count)) {
+                httpd_resp_set_status(req, HTTPD_200);
+                httpd_resp_send(req, "OK", 3);
+            } else {
+                httpd_resp_set_status(req, HTTPD_500);
+                httpd_resp_send(req, "NG", 3);
+            }
         }
 
         cJSON_Delete(item);

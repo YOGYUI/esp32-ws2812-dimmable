@@ -19,13 +19,16 @@
 #define WS2812_PIXEL_COUNT      16
 #define TASK_PRIORITY_WS2812    10
 #define LED_SET_ALL             -1
+#define WS2812_REFRESH_TIME_MS  100
 
 // PWM Parameters
-#define LED_PWM_FREQUENCY       200
-#define PWM_DUTY_MAX            500
+#define LED_PWM_FREQUENCY       50000
+#define PWM_DUTY_MAX            400
 
 // Web Server & Network
 #define WEB_SERVER_PORT         80
 #define WIFI_SSID               "YOGYUI-ESP32-TEST"
+
+#define PIN_DEFAULT_BTN        0
 
 #endif

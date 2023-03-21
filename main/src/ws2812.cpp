@@ -20,6 +20,7 @@ CWS2812Ctrl* CWS2812Ctrl::_instance = nullptr;
 enum CMD_TYPE {
     SETRGB = 0,
     BLINK = 1,
+    BLINK_DEMO = 2,
 };
 
 CWS2812Ctrl::CWS2812Ctrl()
@@ -92,7 +93,7 @@ bool CWS2812Ctrl::initialize(uint8_t gpio_pin_no, uint16_t pixel_cnt)
     return true;
 }
 
-bool CWS2812Ctrl::set_pwm_duty(uint32_t duty)
+bool CWS2812Ctrl::set_pwm_duty(uint32_t duty, bool verbose/*=true*/)
 {
     esp_err_t ret;
     ret = ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, duty);
@@ -107,12 +108,16 @@ bool CWS2812Ctrl::set_pwm_duty(uint32_t duty)
         return false;
     }
     
-    GetLogger(eLogType::Info)->Log("set pwm duty: %d", duty);
+    if (verbose) {
+        GetLogger(eLogType::Info)->Log("set pwm duty: %d", duty);
+    }
+
     return true;
 }
 
 static void IRAM_ATTR set_databit_low(uint8_t pin_no)
 {
+    // T0H: 220ns ~ 380ns
     GPIO_REG_WRITE(GPIO_OUT_W1TS_REG, 1UL << pin_no);
     __asm__ __volatile__(
     "nop; nop; nop; nop; nop; nop; nop; nop;"
@@ -120,13 +125,11 @@ static void IRAM_ATTR set_databit_low(uint8_t pin_no)
     "nop; nop; nop; nop; nop; nop; nop; nop;"
     "nop; nop; nop; nop; nop; nop; nop; nop;"
     "nop; nop; nop; nop; nop; nop; nop; nop;"
-    "nop; nop; nop; nop; nop; nop; nop; nop;"
-    "nop; nop; nop; nop; nop; nop; nop; nop;"
     "nop; nop; nop; nop; nop; nop; nop; nop;");
 
+    // T0L: 580ns ~ 1us
     GPIO_REG_WRITE(GPIO_OUT_W1TC_REG, 1UL << pin_no);
     __asm__ __volatile__(
-    "nop; nop; nop; nop; nop; nop; nop; nop;"
     "nop; nop; nop; nop; nop; nop; nop; nop;"
     "nop; nop; nop; nop; nop; nop; nop; nop;"
     "nop; nop; nop; nop; nop; nop; nop; nop;"
@@ -143,6 +146,7 @@ static void IRAM_ATTR set_databit_low(uint8_t pin_no)
 
 static void IRAM_ATTR set_databit_high(uint8_t pin_no)
 {
+    // T1H: 580ns ~ 1us
     GPIO_REG_WRITE(GPIO_OUT_W1TS_REG, 1UL << pin_no);
     __asm__ __volatile__(
     "nop; nop; nop; nop; nop; nop; nop; nop;"
@@ -159,10 +163,9 @@ static void IRAM_ATTR set_databit_high(uint8_t pin_no)
     "nop; nop; nop; nop; nop; nop; nop; nop;"
     "nop; nop; nop; nop; nop; nop; nop; nop;"
     "nop; nop; nop; nop; nop; nop; nop; nop;"
-    "nop; nop; nop; nop; nop; nop; nop; nop;"
-    "nop; nop; nop; nop; nop; nop; nop; nop;"
-    "nop; nop; nop; nop;");
+    "nop; nop; nop; nop; nop; nop; nop; nop;");
 
+    // T1L: 220ns ~ 420ns
     GPIO_REG_WRITE(GPIO_OUT_W1TC_REG, 1UL << pin_no);
     __asm__ __volatile__(
     "nop; nop; nop; nop; nop; nop; nop; nop;"
@@ -217,7 +220,7 @@ bool CWS2812Ctrl::update_color()
     return true;
 }
 
-bool CWS2812Ctrl::set_brightness(uint8_t value, bool save_memory/*=true*/)
+bool CWS2812Ctrl::set_brightness(uint8_t value, bool save_memory/*=true*/,  bool verbose/*=true*/)
 {
     m_brightness = value;
     if (save_memory) {
@@ -225,7 +228,7 @@ bool CWS2812Ctrl::set_brightness(uint8_t value, bool save_memory/*=true*/)
     }
 
     uint32_t duty = (uint32_t)((double)value / 100. * PWM_DUTY_MAX);
-    return set_pwm_duty(duty);
+    return set_pwm_duty(duty, verbose);
 }
 
 uint8_t CWS2812Ctrl::get_brightness()
@@ -246,6 +249,7 @@ bool CWS2812Ctrl::set_common_color(uint8_t red, uint8_t green, uint8_t blue, boo
     if (save_memory) {
         GetMemory()->save_ws2812_color(red, green, blue);
     }
+
     GetLogger(eLogType::Info)->Log("set common color(%d,%d,%d)", red, green, blue);
     return set_pixel_rgb_value(LED_SET_ALL, red, green, blue, true);
 }
@@ -263,6 +267,23 @@ bool CWS2812Ctrl::blink(uint32_t duration_ms/*=1000*/, uint32_t count/*=1*/)
         return false;
     }
 
+    GetLogger(eLogType::Info)->Log("set blink(%d,%d)", duration_ms, count);
+    return true;
+}
+
+bool CWS2812Ctrl::blink_demo()
+{
+    m_blink_count = 10;
+
+    int *CMD = new int[1];
+    CMD[0] = BLINK_DEMO;
+    if (xQueueSend(m_queue_command, (void *)&CMD, pdMS_TO_TICKS(10)) != pdTRUE) {
+        GetLogger(eLogType::Error)->Log("Failed to add command queue");
+        delete CMD;
+        return false;
+    }
+
+    GetLogger(eLogType::Info)->Log("set blink demo");
     return true;
 }
 
@@ -272,31 +293,34 @@ void CWS2812Ctrl::func_command(void *param)
     int *cmd_type = nullptr;
     uint8_t brightness;
     uint32_t delay;
+    bool blink_demo = false;
 
     GetLogger(eLogType::Info)->Log("Realtime Task for WS2812 Module Started");
     while (obj->m_task_keepalive) {
-        if (xQueueReceive(obj->m_queue_command, (void *)&cmd_type, pdMS_TO_TICKS(10)) == pdTRUE) {
+        if (xQueueReceive(obj->m_queue_command, (void *)&cmd_type, pdMS_TO_TICKS(WS2812_REFRESH_TIME_MS)) == pdTRUE) {
             if (*cmd_type == SETRGB) {
                 for (size_t i = 0; i < obj->m_pixel_values.size(); i++) {
                     RGB rgb = obj->m_pixel_values[i];
                     obj->m_pixel_conv_values[i] = convert_rgb_to_u32(rgb);
                 }
             } else if (*cmd_type == BLINK) {
-                delay = obj->m_blink_duration_ms / 202;
+                delay = obj->m_blink_duration_ms / 42;
                 brightness = obj->get_brightness();
 
                 for (uint32_t i = 0; i < obj->m_blink_count; i++) {
-                    for (int v = 0; v <= 100; v++) {
-                        obj->set_brightness(v, false);
+                    for (int v = 0; v <= 100; v+=5) {
+                        obj->set_brightness(v, false, false);
                         vTaskDelay(pdMS_TO_TICKS(delay));
                     }
-                    for (int v = 100; v >= 0; v--) {
-                        obj->set_brightness(v, false);
+                    for (int v = 100; v >= 0; v-=5) {
+                        obj->set_brightness(v, false, false);
                         vTaskDelay(pdMS_TO_TICKS(delay));
                     }
                 }
 
-                obj->set_brightness(brightness, false);
+                obj->set_brightness(brightness, false, false);
+            } else if (*cmd_type == BLINK_DEMO) {
+                blink_demo = true;
             }
         }
 
@@ -308,8 +332,52 @@ void CWS2812Ctrl::func_command(void *param)
                     set_databit_low(obj->m_gpio_pin_no);
             }
         }
-        esp_rom_delay_us(50);
+        
+        if (blink_demo) {
+            if (obj->m_blink_count > 0) {
+                RGB rgb;
+                uint32_t rm = obj->m_blink_count % 8;
+                if (rm == 0) {
+                    rgb = RGB(255, 0, 0);
+                } else if (rm == 1) {
+                    rgb = RGB(0, 255, 0);
+                } else if (rm == 2) {
+                    rgb = RGB(0, 0, 255);
+                } else if (rm == 3) {
+                    rgb = RGB(255, 255, 0);
+                } else if (rm == 4) {
+                    rgb = RGB(255, 0, 255);
+                } else if (rm == 5) {
+                    rgb = RGB(0, 255, 255);
+                } else if (rm == 6) {
+                    rgb = RGB(255, 70, 0);
+                } else if (rm == 7) {
+                    rgb = RGB(0, 128, 0);
+                } else {
+                    rgb = RGB(255, 255, 255);
+                }
+
+                for (size_t i = 0; i < obj->m_pixel_values.size(); i++) {
+                    obj->m_pixel_conv_values[i] = convert_rgb_to_u32(rgb);
+                }
+
+                delay = 25;
+                for (int v = 0; v <= 100; v+=5) {
+                    obj->set_brightness(v, false, false);
+                    vTaskDelay(pdMS_TO_TICKS(delay));
+                }
+                for (int v = 100; v >= 0; v-=5) {
+                    obj->set_brightness(v, false, false);
+                    vTaskDelay(pdMS_TO_TICKS(delay));
+                }
+
+                obj->m_blink_count--;
+            } else {
+                blink_demo = false;
+            }
+        }
     }
+
     GetLogger(eLogType::Info)->Log("Realtime Task for WS2812 Module Terminated");
     vTaskDelete(nullptr);
 }

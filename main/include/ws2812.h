@@ -35,13 +35,14 @@ public:
     bool update_color();
     bool clear_color();
 
-    bool set_brightness(uint8_t value, bool save_memory = true);
+    bool set_brightness(uint8_t value, bool save_memory = true, bool verbose = true);
     uint8_t get_brightness();
     
     RGB get_common_color();
     bool set_common_color(uint8_t red, uint8_t green, uint8_t blue, bool save_memory = true);
 
     bool blink(uint32_t duration_ms = 1000, uint32_t count = 1);
+    bool blink_demo();
 
 private:
     static CWS2812Ctrl *_instance;
@@ -60,7 +61,7 @@ private:
     TaskHandle_t m_task_handle;
     bool m_task_keepalive;
     
-    bool set_pwm_duty(uint32_t duty);
+    bool set_pwm_duty(uint32_t duty, bool verbose = true);
 
     static void func_command(void *param);
 };

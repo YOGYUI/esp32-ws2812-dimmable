@@ -65,7 +65,7 @@
         </v-row>
 
         <v-row
-            justify="space-around"
+            justify="center"
         >
             <v-col
                 cols="12"
@@ -74,9 +74,46 @@
                 <v-btn
                     color="success"
                     @click="set_ws2812_blink"
+                    :disabled="!blink_count_rules"
                 >
                     BLINK
                 </v-btn>
+            </v-col>
+            <v-col
+                cols="12"
+                md="1"
+            >
+                <v-text-field
+                    label="duration(ms)"
+                    v-model="blink_duration"
+                    type="number"
+                    :rules="blink_duration_rules"
+                    required
+                >
+                </v-text-field>
+            </v-col>
+            <v-col
+                cols="12"
+                md="1"
+            >
+                <v-text-field
+                    label="count"
+                    v-model="blink_count"
+                    type="number"
+                    :rules="blink_count_rules"
+                    required
+                >
+                </v-text-field>
+            </v-col>
+            <v-col
+                cols="12"
+                md="1"
+            >
+                <v-checkbox
+                    label="Demo"
+                    v-model="blink_demo"
+                >
+                </v-checkbox>
             </v-col>
         </v-row>
         
@@ -91,7 +128,14 @@ export default {
             picker_color: "#FFFFFF",
             brightness: 0,
             blink_duration: 1000,
-            blink_count: 1
+            blink_duration_rules: [
+                v => (v >= 1) || "Now Allowed"
+            ],
+            blink_count: 1,
+            blink_count_rules: [
+                v => (v >= 1) || "Now Allowed"
+            ],
+            blink_demo: false
         }
     },
     beforeMount: function() {
@@ -158,12 +202,14 @@ export default {
             })
         },
         set_ws2812_blink: function() {
+            // console.log(this.blink_duration * 1, this.blink_count * 1, this.blink_demo | 0);
             this.$axios({
                 method: "post",
                 url: "/api/v1/ws2812/blink",
                 data: JSON.stringify({
-                    duration: this.blink_duration,
-                    count: this.blink_count
+                    duration: this.blink_duration * 1,
+                    count: this.blink_count * 1,
+                    demo: this.blink_demo | 0
                 }),
                 headers: { "Content-Type": "application/json; charset=utf-8" },
                 timeout: 5000
