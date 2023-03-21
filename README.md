@@ -22,7 +22,7 @@ source ./sdk/esp-idf/install.sh
 
 RGB LED (WS2812S)
 ---
-자세한 내용은 데이터시트([WS2812S]()) 참고.<br>
+자세한 내용은 데이터시트([WS2812S](http://doc.switch-science.com/datasheets/WS2812S+preliminaryV2.0.pdf)) 참고.<br>
 High Bit, Low Bit를 위한 under 1ns delay는 모두 
 ```c
 __asm__ __volatile__(
